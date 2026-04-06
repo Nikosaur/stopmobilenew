@@ -9,17 +9,14 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Camera, useCameraDevice, useCodeScanner } from 'react-native-vision-camera';
-import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../types';
 import apiService from '../services/api';
 
-type StockScannerScreenNavigationProp = NativeStackNavigationProp<RootStackParamList, 'StockScanner'>;
+type StockScannerScreenProps = NativeStackScreenProps<RootStackParamList, 'StockScanner'>;
 
-interface StockScannerScreenProps {
-  navigation: StockScannerScreenNavigationProp;
-}
-
-export default function StockScannerScreen({ navigation }: StockScannerScreenProps) {
+export default function StockScannerScreen({ navigation, route }: StockScannerScreenProps) {
+  const { mode, returnTo, returnKey } = route.params || {};
   const [hasPermission, setHasPermission] = useState(false);
   const [scanned, setScanned] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -47,16 +44,27 @@ export default function StockScannerScreen({ navigation }: StockScannerScreenPro
     setHasPermission(status === 'granted');
   };
 
-  const handleBarcodeScanned = async (barcode: string) => {
+  const handleBarcodeScanned = async (value: string) => {
+    // Return scan to caller (InputCekStok) without API checks
+    if (returnTo && returnKey) {
+      navigation.navigate({
+        name: returnTo,
+        params: { [returnKey]: value },
+        merge: true,
+      } as any);
+      navigation.goBack();
+      return;
+    }
+
     setLoading(true);
     try {
-      const result = await apiService.getStockByBarcode(barcode);
+      const result = await apiService.getProductByBarcode(value);
       if (result.success && result.data) {
-        navigation.navigate('StockCheck', { barcode });
+        navigation.navigate('StockCheck', { barcode: value });
       } else {
         Alert.alert(
           'Item Not Found',
-          `No stock found for barcode: ${barcode}`,
+          `No stock found for barcode: ${value}`,
           [
             {
               text: 'Try Again',
@@ -64,7 +72,7 @@ export default function StockScannerScreen({ navigation }: StockScannerScreenPro
             },
             {
               text: 'Manual Entry',
-              onPress: () => navigation.navigate('StockCheck', { barcode }),
+              onPress: () => navigation.navigate('StockCheck', { barcode: value }),
             },
           ]
         );
@@ -78,6 +86,10 @@ export default function StockScannerScreen({ navigation }: StockScannerScreenPro
   };
 
   const handleManualEntry = () => {
+    if (returnTo) {
+      navigation.goBack();
+      return;
+    }
     navigation.navigate('StockCheck', {});
   };
 
@@ -120,7 +132,9 @@ export default function StockScannerScreen({ navigation }: StockScannerScreenPro
         >
           <Text style={styles.backArrow}>←</Text>
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Scan Barcode</Text>
+        <Text style={styles.headerTitle}>
+          {mode === 'lokasi' ? 'Scan Lokasi' : 'Scan Barcode'}
+        </Text>
         <View style={styles.placeholder} />
       </View>
 
@@ -143,10 +157,14 @@ export default function StockScannerScreen({ navigation }: StockScannerScreenPro
       </View>
 
       <View style={styles.footer}>
-        <Text style={styles.hint}>Position barcode within the frame</Text>
+        <Text style={styles.hint}>
+          {mode === 'lokasi' ? 'Posisikan QR/Code lokasi di frame' : 'Position barcode within the frame'}
+        </Text>
         <TouchableOpacity style={styles.manualButton} onPress={handleManualEntry}>
           <Text style={styles.keyboardEmoji}>⌨️</Text>
-          <Text style={styles.manualButtonText}>Enter Manually</Text>
+          <Text style={styles.manualButtonText}>
+            {returnTo ? 'Kembali' : 'Enter Manually'}
+          </Text>
         </TouchableOpacity>
       </View>
     </SafeAreaView>

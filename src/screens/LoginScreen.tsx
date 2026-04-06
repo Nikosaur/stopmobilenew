@@ -54,29 +54,26 @@ export default function LoginScreen({ navigation }: LoginScreenProps) {
         style={styles.content}
       >
         <View style={styles.header}>
-          <Text style={styles.title}>Warehouse Stock</Text>
-          <Text style={styles.subtitle}>Stock Checker App</Text>
+          <Text style={styles.title}>Stock Opname</Text>
         </View>
 
         <View style={styles.form}>
-          <Text style={styles.label}>Username</Text>
           <TextInput
             style={styles.input}
             value={username}
             onChangeText={setUsername}
-            placeholder="Enter username"
-            placeholderTextColor="#999"
+            placeholder="Username"
+            placeholderTextColor="#666"
             autoCapitalize="none"
             autoCorrect={false}
           />
 
-          <Text style={styles.label}>Password</Text>
           <TextInput
             style={styles.input}
             value={password}
             onChangeText={setPassword}
-            placeholder="Enter password"
-            placeholderTextColor="#999"
+            placeholder="Password"
+            placeholderTextColor="#666"
             secureTextEntry
             autoCapitalize="none"
           />
@@ -87,15 +84,18 @@ export default function LoginScreen({ navigation }: LoginScreenProps) {
             disabled={loading}
           >
             {loading ? (
-              <ActivityIndicator color="#fff" />
+              <ActivityIndicator color="#1a2744" />
             ) : (
-              <Text style={styles.loginButtonText}>Login</Text>
+              <Text style={styles.loginButtonText}>MASUK</Text>
             )}
           </TouchableOpacity>
-
-          <Text style={styles.hint}>Use admin/admin for testing</Text>
         </View>
       </KeyboardAvoidingView>
+
+      <View style={styles.footer}>
+        <Text style={styles.footerText}>Code with ♥ by Darkotech</Text>
+        <Text style={styles.footerSubtext}>Staging</Text>
+      </View>
     </SafeAreaView>
   );
 }
@@ -103,66 +103,62 @@ export default function LoginScreen({ navigation }: LoginScreenProps) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#fff',
+    backgroundColor: '#1a2744',
   },
   content: {
     flex: 1,
     justifyContent: 'center',
-    paddingHorizontal: 24,
+    paddingHorizontal: 30,
   },
   header: {
     alignItems: 'center',
-    marginBottom: 48,
+    marginBottom: 40,
   },
   title: {
-    fontSize: 28,
+    fontSize: 24,
     fontWeight: 'bold',
-    color: '#1a1a1a',
-    marginBottom: 8,
-  },
-  subtitle: {
-    fontSize: 16,
-    color: '#666',
+    color: '#f90',
   },
   form: {
     width: '100%',
   },
-  label: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#1a1a1a',
-    marginBottom: 8,
-  },
   input: {
     height: 48,
-    borderWidth: 1,
-    borderColor: '#ddd',
-    borderRadius: 8,
-    paddingHorizontal: 16,
-    fontSize: 16,
-    backgroundColor: '#f9f9f9',
+    borderRadius: 4,
+    paddingHorizontal: 12,
+    fontSize: 14,
+    backgroundColor: '#e8e8e8',
     marginBottom: 16,
+    color: '#333',
   },
   loginButton: {
-    height: 48,
-    backgroundColor: '#007AFF',
-    borderRadius: 8,
+    height: 44,
+    backgroundColor: '#f90',
+    borderRadius: 4,
     justifyContent: 'center',
     alignItems: 'center',
-    marginTop: 8,
+    marginTop: 16,
   },
   loginButtonDisabled: {
     backgroundColor: '#ccc',
   },
   loginButtonText: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: '600',
+    color: '#1a2744',
+    fontSize: 14,
+    fontWeight: 'bold',
+    letterSpacing: 1,
   },
-  hint: {
-    textAlign: 'center',
-    marginTop: 16,
-    color: '#999',
+  footer: {
+    alignItems: 'center',
+    paddingBottom: 40,
+  },
+  footerText: {
+    color: '#fff',
     fontSize: 12,
+  },
+  footerSubtext: {
+    color: '#fff',
+    fontSize: 12,
+    marginTop: 4,
   },
 });

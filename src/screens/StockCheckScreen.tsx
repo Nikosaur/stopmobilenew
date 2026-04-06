@@ -13,7 +13,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import type { NativeStackNavigationProp, NativeStackScreenProps } from '@react-navigation/native-stack';
-import type { RootStackParamList, StockItem } from '../types';
+import type { RootStackParamList, Product, CheckStockInput } from '../types';
 import apiService from '../services/api';
 
 type StockCheckScreenProps = NativeStackScreenProps<RootStackParamList, 'StockCheck'>;
@@ -22,10 +22,11 @@ export default function StockCheckScreen({ route, navigation }: StockCheckScreen
   const { barcode: initialBarcode } = route.params || {};
   
   const [barcode, setBarcode] = useState(initialBarcode || '');
-  const [stockItem, setStockItem] = useState<StockItem | null>(null);
-  const [actualQuantity, setActualQuantity] = useState('');
-  const [notes, setNotes] = useState('');
-  const [status, setStatus] = useState<'matched' | 'mismatch' | 'damaged' | 'missing'>('matched');
+  const [product, setProduct] = useState<Product | null>(null);
+  const [skuNumber, setSkuNumber] = useState('');
+  const [location, setLocation] = useState('');
+  const [qtyGood, setQtyGood] = useState('');
+  const [qtyObsolete, setQtyObsolete] = useState('');
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [searching, setSearching] = useState(false);
@@ -38,27 +39,28 @@ export default function StockCheckScreen({ route, navigation }: StockCheckScreen
 
   const searchStock = async (code: string) => {
     if (!code.trim()) {
-      Alert.alert('Error', 'Please enter a barcode');
+      Alert.alert('Error', 'Please enter a barcode or SKU');
       return;
     }
 
     setSearching(true);
     setLoading(true);
     try {
-      const result = await apiService.getStockByBarcode(code);
+      const result = await apiService.getProductByBarcode(code);
       if (result.success && result.data) {
-        setStockItem(result.data);
-        setActualQuantity(result.data.quantity.toString());
+        setProduct(result.data);
+        setSkuNumber(result.data.sku_number);
       } else {
-        setStockItem(null);
+        setProduct(null);
+        setSkuNumber(code);
         Alert.alert(
           'Not Found',
-          'No stock item found with this barcode. You can still record a check.',
+          'No product found with this barcode. You can still record a check with the SKU.',
           [{ text: 'OK' }]
         );
       }
     } catch (error) {
-      Alert.alert('Error', 'Failed to search stock');
+      Alert.alert('Error', 'Failed to search product');
     } finally {
       setLoading(false);
       setSearching(false);
@@ -70,24 +72,32 @@ export default function StockCheckScreen({ route, navigation }: StockCheckScreen
   };
 
   const handleSave = async () => {
-    if (!actualQuantity.trim()) {
-      Alert.alert('Error', 'Please enter actual quantity');
+    if (!skuNumber.trim()) {
+      Alert.alert('Error', 'Please enter SKU number');
       return;
     }
 
-    const quantity = parseInt(actualQuantity, 10);
-    if (isNaN(quantity) || quantity < 0) {
-      Alert.alert('Error', 'Please enter a valid quantity');
+    if (!location.trim()) {
+      Alert.alert('Error', 'Please enter location');
+      return;
+    }
+
+    const goodQty = parseInt(qtyGood, 10) || 0;
+    const obsoleteQty = parseInt(qtyObsolete, 10) || 0;
+
+    if (goodQty < 0 || obsoleteQty < 0) {
+      Alert.alert('Error', 'Please enter valid quantities');
       return;
     }
 
     setSaving(true);
     try {
-      const result = await apiService.updateStockCheck({
-        stockId: stockItem?.id || barcode,
-        actualQuantity: quantity,
-        notes: notes || undefined,
-        status,
+      const result = await apiService.createCheckStock({
+        sku_number: skuNumber.toUpperCase(),
+        location: location.toUpperCase(),
+        qty_good: goodQty,
+        qty_obsolete: obsoleteQty,
+        barcode: barcode || undefined,
       });
 
       if (result.success) {
@@ -99,10 +109,11 @@ export default function StockCheckScreen({ route, navigation }: StockCheckScreen
               text: 'Check Another',
               onPress: () => {
                 setBarcode('');
-                setStockItem(null);
-                setActualQuantity('');
-                setNotes('');
-                setStatus('matched');
+                setProduct(null);
+                setSkuNumber('');
+                setLocation('');
+                setQtyGood('');
+                setQtyObsolete('');
               },
             },
             {
@@ -164,73 +175,69 @@ export default function StockCheckScreen({ route, navigation }: StockCheckScreen
             </View>
           </View>
 
-          {/* Stock Info Section */}
-          {stockItem && (
+          {/* Product Info Section */}
+          {product && (
             <View style={styles.infoCard}>
-              <Text style={styles.infoTitle}>Stock Information</Text>
+              <Text style={styles.infoTitle}>Product Information</Text>
               <View style={styles.infoRow}>
                 <Text style={styles.infoLabel}>Name:</Text>
-                <Text style={styles.infoValue}>{stockItem.name}</Text>
+                <Text style={styles.infoValue}>{product.name}</Text>
               </View>
               <View style={styles.infoRow}>
                 <Text style={styles.infoLabel}>SKU:</Text>
-                <Text style={styles.infoValue}>{stockItem.sku}</Text>
+                <Text style={styles.infoValue}>{product.sku_number}</Text>
               </View>
               <View style={styles.infoRow}>
-                <Text style={styles.infoLabel}>Location:</Text>
-                <Text style={styles.infoValue}>{stockItem.zone} - {stockItem.shelf}</Text>
+                <Text style={styles.infoLabel}>Category:</Text>
+                <Text style={styles.infoValue}>{product.category.name}</Text>
               </View>
               <View style={styles.infoRow}>
-                <Text style={styles.infoLabel}>Expected Qty:</Text>
-                <Text style={styles.infoValue}>{stockItem.quantity} {stockItem.unit}</Text>
+                <Text style={styles.infoLabel}>Brand:</Text>
+                <Text style={styles.infoValue}>{product.brand.name}</Text>
               </View>
             </View>
           )}
 
           {/* Check Form Section */}
           <View style={styles.section}>
-            <Text style={styles.label}>Actual Quantity *</Text>
+            <Text style={styles.label}>SKU Number *</Text>
             <TextInput
               style={styles.input}
-              value={actualQuantity}
-              onChangeText={setActualQuantity}
-              placeholder="Enter actual quantity found"
+              value={skuNumber}
+              onChangeText={setSkuNumber}
+              placeholder="Enter SKU number"
+              placeholderTextColor="#999"
+              autoCapitalize="characters"
+            />
+
+            <Text style={styles.label}>Location *</Text>
+            <TextInput
+              style={styles.input}
+              value={location}
+              onChangeText={setLocation}
+              placeholder="Enter location"
+              placeholderTextColor="#999"
+              autoCapitalize="characters"
+            />
+
+            <Text style={styles.label}>Quantity Good *</Text>
+            <TextInput
+              style={styles.input}
+              value={qtyGood}
+              onChangeText={setQtyGood}
+              placeholder="Enter good quantity"
               placeholderTextColor="#999"
               keyboardType="numeric"
             />
 
-            <Text style={styles.label}>Status</Text>
-            <View style={styles.statusContainer}>
-              {(['matched', 'mismatch', 'damaged', 'missing'] as const).map((s) => (
-                <TouchableOpacity
-                  key={s}
-                  style={[
-                    styles.statusButton,
-                    status === s && styles.statusButtonActive,
-                  ]}
-                  onPress={() => setStatus(s)}
-                >
-                  <Text
-                    style={[
-                      styles.statusText,
-                      status === s && styles.statusTextActive,
-                    ]}
-                  >
-                    {s.charAt(0).toUpperCase() + s.slice(1)}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-
-            <Text style={styles.label}>Notes (Optional)</Text>
+            <Text style={styles.label}>Quantity Obsolete *</Text>
             <TextInput
-              style={[styles.input, styles.notesInput]}
-              value={notes}
-              onChangeText={setNotes}
-              placeholder="Add any notes about this check"
+              style={styles.input}
+              value={qtyObsolete}
+              onChangeText={setQtyObsolete}
+              placeholder="Enter obsolete quantity"
               placeholderTextColor="#999"
-              multiline
-              numberOfLines={3}
+              keyboardType="numeric"
             />
           </View>
 

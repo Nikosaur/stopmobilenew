@@ -11,7 +11,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import type { RootStackParamList, StockItem } from '../types';
+import type { RootStackParamList, CheckStock } from '../types';
 import apiService from '../services/api';
 
 type StockListScreenNavigationProp = NativeStackNavigationProp<RootStackParamList, 'StockList'>;
@@ -21,7 +21,7 @@ interface StockListScreenProps {
 }
 
 export default function StockListScreen({ navigation }: StockListScreenProps) {
-  const [stockItems, setStockItems] = useState<StockItem[]>([]);
+  const [stockItems, setStockItems] = useState<CheckStock[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
@@ -29,7 +29,7 @@ export default function StockListScreen({ navigation }: StockListScreenProps) {
   const loadStockItems = useCallback(async (showLoading = true) => {
     if (showLoading) setLoading(true);
     try {
-      const result = await apiService.getStockItems(searchQuery);
+      const result = await apiService.getCheckStocks();
       if (result.success && result.data) {
         setStockItems(result.data);
       } else {
@@ -41,7 +41,7 @@ export default function StockListScreen({ navigation }: StockListScreenProps) {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [searchQuery]);
+  }, []);
 
   const onRefresh = () => {
     setRefreshing(true);
@@ -49,26 +49,18 @@ export default function StockListScreen({ navigation }: StockListScreenProps) {
   };
 
   const handleSearch = () => {
+    // Search is now done via filtering the loaded check stocks
     loadStockItems();
   };
 
-  const getStatusColor = (status: StockItem['status']) => {
-    switch (status) {
-      case 'matched':
-        return '#34C759';
-      case 'mismatch':
-        return '#FF3B30';
-      case 'not_found':
-        return '#FF9500';
-      default:
-        return '#999';
-    }
+  const getStatusColor = (isRecheck: boolean) => {
+    return isRecheck ? '#FF9500' : '#34C759';
   };
 
-  const renderStockItem = ({ item }: { item: StockItem }) => (
+  const renderStockItem = ({ item }: { item: CheckStock }) => (
     <TouchableOpacity
       style={styles.stockCard}
-      onPress={() => navigation.navigate('StockCheck', { barcode: item.barcode })}
+      onPress={() => navigation.navigate('StockCheck', { barcode: item.barcode || item.sku_number })}
       activeOpacity={0.7}
     >
       <View style={styles.stockHeader}>
@@ -76,16 +68,16 @@ export default function StockListScreen({ navigation }: StockListScreenProps) {
           <Text style={styles.stockName} numberOfLines={1}>
             {item.name}
           </Text>
-          <Text style={styles.stockSku}>{item.sku}</Text>
+          <Text style={styles.stockSku}>{item.sku_number}</Text>
         </View>
         <View
           style={[
             styles.statusBadge,
-            { backgroundColor: getStatusColor(item.status) },
+            { backgroundColor: getStatusColor(item.is_recheck_item) },
           ]}
         >
           <Text style={styles.statusText}>
-            {item.status.charAt(0).toUpperCase() + item.status.slice(1)}
+            {item.is_recheck_item ? 'Recheck' : 'Checked'}
           </Text>
         </View>
       </View>
@@ -93,22 +85,18 @@ export default function StockListScreen({ navigation }: StockListScreenProps) {
       <View style={styles.stockDetails}>
         <View style={styles.detailRow}>
           <Text style={styles.detailLabel}>Location:</Text>
-          <Text style={styles.detailValue}>
-            {item.zone} - {item.shelf}
-          </Text>
+          <Text style={styles.detailValue}>{item.location_name}</Text>
         </View>
         <View style={styles.detailRow}>
           <Text style={styles.detailLabel}>Quantity:</Text>
           <Text style={styles.detailValue}>
-            {item.quantity} / {item.expectedQuantity} {item.unit}
+            Good: {item.qty_good} | Obsolete: {item.qty_obsolete}
           </Text>
         </View>
-        {item.lastChecked && (
+        {item.note && (
           <View style={styles.detailRow}>
-            <Text style={styles.detailLabel}>Last Check:</Text>
-            <Text style={styles.detailValue}>
-              {new Date(item.lastChecked).toLocaleDateString()}
-            </Text>
+            <Text style={styles.detailLabel}>Note:</Text>
+            <Text style={styles.detailValue}>{item.note}</Text>
           </View>
         )}
       </View>
@@ -143,7 +131,7 @@ export default function StockListScreen({ navigation }: StockListScreenProps) {
       <FlatList
         data={stockItems}
         renderItem={renderStockItem}
-        keyExtractor={(item) => item.id}
+        keyExtractor={(item) => item.check_stock_id}
         contentContainerStyle={styles.listContainer}
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
