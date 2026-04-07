@@ -25,6 +25,7 @@ type SortOrder = 'asc' | 'desc';
 
 export default function CekStokScreen({ navigation }: CekStokScreenProps) {
   const [searchQuery, setSearchQuery] = useState('');
+  const [debouncedSearchQuery, setDebouncedSearchQuery] = useState('');
   const [items, setItems] = useState<CekStokItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [total, setTotal] = useState(0);
@@ -34,9 +35,17 @@ export default function CekStokScreen({ navigation }: CekStokScreenProps) {
   const [sortOrder, setSortOrder] = useState<SortOrder>('desc');
   const [checkedCount, setCheckedCount] = useState(0);
 
+  // Debounce search query
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearchQuery(searchQuery);
+    }, 500); // Wait 500ms after user stops typing
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
+
   const loadCekStok = useCallback(async () => {
     setLoading(true);
-    const data = await api.getCekStokItems(searchQuery);
+    const data = await api.getCekStokItems(debouncedSearchQuery);
     setItems(data);
     setTotal(data.length);
     const checked = data.filter(item => item.checked).length;
@@ -46,7 +55,7 @@ export default function CekStokScreen({ navigation }: CekStokScreenProps) {
     const syncStatus = await api.getSyncStatus();
     setPendingSync(syncStatus.pendingUploads);
     setLoading(false);
-  }, [searchQuery]);
+  }, [debouncedSearchQuery]);
 
   useEffect(() => {
     loadCekStok();
@@ -185,7 +194,13 @@ export default function CekStokScreen({ navigation }: CekStokScreenProps) {
             }
           >
             <Text style={[styles.tableCell, styles.colLokasi]}>{item.lokasi}</Text>
-            <Text style={[styles.tableCell, styles.colSKU]}>{item.sku}</Text>
+            <TouchableOpacity
+              style={styles.colSKU}
+              onPress={() => setSearchQuery(item.sku)}
+              activeOpacity={0.7}
+            >
+              <Text style={[styles.tableCell, styles.skuLink]}>{item.sku}</Text>
+            </TouchableOpacity>
             <View style={[styles.colNama]}>
               <Text style={styles.namaText}>{item.nama}</Text>
             </View>
@@ -313,6 +328,10 @@ const styles = StyleSheet.create({
   },
   colSKU: {
     width: 100,
+  },
+  skuLink: {
+    color: '#1a2744',
+    fontWeight: '700',
   },
   colNama: {
     flex: 1.5,

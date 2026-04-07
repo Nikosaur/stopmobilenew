@@ -3,8 +3,11 @@ import type { ApiResponse, AuthResponse, User, Product, CheckStock, CheckStockIn
 
 // TODO: Replace with your actual Laravel API URL
 const API_BASE_URL = 'https://parts.dev.biz.id/stop/api';
+// // Local Laravel API URL for Android emulator (10.0.2.2 maps to host's 127.0.0.1)
+// const API_BASE_URL = 'http://10.0.2.2:8000';
 
 const TOKEN_KEY = '@auth_token';
+const REFRESH_TOKEN_KEY = '@auth_refresh_token';
 const USER_KEY = '@auth_user';
 
 class ApiService {
@@ -14,6 +17,14 @@ class ApiService {
 
   private async setToken(token: string): Promise<void> {
     await AsyncStorage.setItem(TOKEN_KEY, token);
+  }
+
+  private async getRefreshToken(): Promise<string | null> {
+    return await AsyncStorage.getItem(REFRESH_TOKEN_KEY);
+  }
+
+  private async setRefreshToken(token: string): Promise<void> {
+    await AsyncStorage.setItem(REFRESH_TOKEN_KEY, token);
   }
 
   private async getUser(): Promise<User | null> {
@@ -26,7 +37,45 @@ class ApiService {
   }
 
   async clearAuth(): Promise<void> {
-    await AsyncStorage.multiRemove([TOKEN_KEY, USER_KEY]);
+    await AsyncStorage.multiRemove([TOKEN_KEY, REFRESH_TOKEN_KEY, USER_KEY]);
+  }
+
+  private isRefreshing = false;
+
+  private async refreshAccessToken(): Promise<boolean> {
+    if (this.isRefreshing) return false;
+    this.isRefreshing = true;
+    try {
+      const refreshToken = await this.getRefreshToken();
+      if (!refreshToken) return false;
+
+      const response = await fetch(`${API_BASE_URL}/auth/token/v1/refresh`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${await this.getToken()}`,
+        },
+        body: JSON.stringify({ refresh_token: refreshToken }),
+      });
+
+      if (!response.ok) return false;
+
+      const data = await response.json();
+      const tokenData = data?.data?.token || data?.token || data;
+
+      if (tokenData?.access_token) {
+        await this.setToken(tokenData.access_token);
+        if (tokenData.refresh_token) {
+          await this.setRefreshToken(tokenData.refresh_token);
+        }
+        return true;
+      }
+      return false;
+    } catch {
+      return false;
+    } finally {
+      this.isRefreshing = false;
+    }
   }
 
   private async request<T>(endpoint: string, options?: RequestInit, requireAuth = true): Promise<ApiResponse<T>> {
@@ -58,7 +107,7 @@ class ApiService {
       } catch (fetchError: any) {
         clearTimeout(timeoutId);
         // Check if it's an abort error (timeout)
-        if (fetchError.name === 'AbortError') {
+        if (fetchError?.name === 'AbortError') {
           return {
             success: false,
             error: 'Request timeout: Server took too long to respond',
@@ -106,6 +155,14 @@ class ApiService {
       }
 
       if (!response.ok) {
+        // If 401 and this is an authenticated request, try refreshing the token
+        if (response.status === 401 && requireAuth) {
+          const refreshed = await this.refreshAccessToken();
+          if (refreshed) {
+            // Retry the request once with the new token
+            return this.requestWithoutRetry<T>(endpoint, options, requireAuth);
+          }
+        }
         return {
           success: false,
           error: data.message || data.error || `HTTP error! status: ${response.status}`,
@@ -125,6 +182,32 @@ class ApiService {
     }
   }
 
+  // Duplicate of request() but without retry — used after a token refresh to avoid infinite loops
+  private async requestWithoutRetry<T>(endpoint: string, options?: RequestInit, requireAuth = true): Promise<ApiResponse<T>> {
+    try {
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+        ...(options?.headers as Record<string, string> || {}),
+      };
+      if (requireAuth) {
+        const token = await this.getToken();
+        if (token) {
+          headers['Authorization'] = `Bearer ${token}`;
+        }
+      }
+      const response = await fetch(`${API_BASE_URL}${endpoint}`, { ...options, headers });
+      const text = await response.text();
+      let data: any;
+      try { data = text ? JSON.parse(text) : {}; } catch { data = { message: text }; }
+      if (!response.ok) {
+        return { success: false, error: data.message || data.error || `HTTP error! status: ${response.status}` };
+      }
+      return { success: true, data: data.data || data };
+    } catch (error) {
+      return { success: false, error: error instanceof Error ? error.message : 'Network error' };
+    }
+  }
+
   // Auth
   async login(username: string, password: string): Promise<ApiResponse<User>> {
     const result = await this.request<AuthResponse>('/auth/v1/signin', {
@@ -134,6 +217,9 @@ class ApiService {
 
     if (result.success && result.data) {
       await this.setToken(result.data.token.access_token);
+      if (result.data.token.refresh_token) {
+        await this.setRefreshToken(result.data.token.refresh_token);
+      }
       await this.setUser(result.data.user);
       return {
         success: true,
@@ -170,12 +256,22 @@ class ApiService {
   }
 
   async getProductByBarcode(barcode: string): Promise<ApiResponse<Product>> {
-    const result = await this.getProducts();
-    if (result.success && result.data) {
-      const product = result.data.find(p => p.barcode === barcode);
-      if (product) {
-        return { success: true, data: product };
-      }
+    // Use cached master data instead of fetching all products from API each time
+    const masterBarang = await this.getMasterBarang();
+    const item = masterBarang.find(p => p.barcode === barcode);
+    if (item) {
+      return {
+        success: true,
+        data: {
+          id: item.id,
+          sku_number: item.sku,
+          name: item.nama,
+          barcode: item.barcode || '',
+          category: { code: '', name: item.category || '' },
+          brand: { code: '', name: item.brand || '' },
+          group: { code: '', name: item.group || '' },
+        },
+      };
     }
     return { success: false, error: 'Product not found' };
   }

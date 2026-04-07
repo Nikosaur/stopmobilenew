@@ -7,10 +7,10 @@ import {
   TextInput,
   FlatList,
   RefreshControl,
-  SafeAreaView,
   Alert,
   Clipboard,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RootStackParamList, MasterBarang } from '../types';
 import api from '../services/api';
