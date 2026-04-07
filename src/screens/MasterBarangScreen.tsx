@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, memo } from 'react';
 import {
   View,
   Text,
@@ -8,8 +8,9 @@ import {
   FlatList,
   RefreshControl,
   Alert,
-  Clipboard,
+  ActivityIndicator,
 } from 'react-native';
+import Clipboard from '@react-native-clipboard/clipboard';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RootStackParamList, MasterBarang } from '../types';
@@ -20,19 +21,105 @@ type MasterBarangScreenProps = {
   navigation: NativeStackNavigationProp<RootStackParamList, 'MasterBarang'>;
 };
 
+const ITEMS_PER_PAGE = 50; // Load 50 items at a time
+
+// Memoized list item component to prevent re-renders
+const MasterBarangItem = memo(({ item, onCopySKU }: { item: MasterBarang; onCopySKU: (sku: string) => void }) => {
+  // Helper to safely get string value (handles both object {code, name} and string)
+  const getStringValue = (val: any): string => {
+    if (typeof val === 'string') return val;
+    if (val && typeof val === 'object' && val.name) return val.name;
+    return '-';
+  };
+
+  return (
+    <View style={styles.itemCard}>
+      <View style={styles.row}>
+        <Text style={styles.label}>No SKU</Text>
+        <View style={styles.valueRow}>
+          <Text style={styles.value}>{item?.sku || '-'}</Text>
+          <TouchableOpacity onPress={() => onCopySKU(item?.sku || '')} style={styles.copyButton}>
+            <Text style={styles.copyIcon}>📋</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+      <View style={styles.row}>
+        <Text style={styles.label}>Nama</Text>
+        <Text style={styles.value}>{item?.nama || '-'}</Text>
+      </View>
+      <View style={styles.row}>
+        <Text style={styles.label}>Barcode</Text>
+        <Text style={styles.value}>{item?.barcode || '-'}</Text>
+      </View>
+      <View style={styles.row}>
+        <Text style={styles.label}>Kategori</Text>
+        <Text style={styles.valueEmpty}>({getStringValue(item?.category)})</Text>
+      </View>
+      <View style={styles.row}>
+        <Text style={styles.label}>Brand</Text>
+        <Text style={styles.valueEmpty}>({getStringValue(item?.brand)})</Text>
+      </View>
+      <View style={styles.row}>
+        <Text style={styles.label}>Group</Text>
+        <Text style={styles.valueEmpty}>({getStringValue(item?.group)})</Text>
+      </View>
+    </View>
+  );
+});
+
 export default function MasterBarangScreen({ navigation }: MasterBarangScreenProps) {
   const [searchQuery, setSearchQuery] = useState('');
+  const [debouncedSearchQuery, setDebouncedSearchQuery] = useState('');
   const [items, setItems] = useState<MasterBarang[]>([]);
   const [loading, setLoading] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [lastSync, setLastSync] = useState<string | null>(null);
+  const [page, setPage] = useState(1);
+  const [hasMore, setHasMore] = useState(true);
+  const [allLoadedItems, setAllLoadedItems] = useState<MasterBarang[]>([]);
 
-  const loadMasterBarang = useCallback(async () => {
-    setLoading(true);
+  // Debounce search query - wait 500ms after user stops typing
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearchQuery(searchQuery);
+    }, 500);
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
+
+  const loadMasterBarang = useCallback(async (pageNum = 1, append = false) => {
+    if (pageNum === 1) {
+      setLoading(true);
+    } else {
+      setLoadingMore(true);
+    }
+    
     try {
-      const data = await api.getMasterBarang(searchQuery);
+      const data = await api.getMasterBarang(debouncedSearchQuery);
       console.log('MasterBarang loaded:', data.length, 'items');
-      console.log('First item:', data[0]);
-      setItems(data);
+      
+      // If searching, show all results (backend filters)
+      // If not searching, paginate locally to prevent UI freeze
+      if (debouncedSearchQuery) {
+        setItems(data);
+        setAllLoadedItems(data);
+        setHasMore(false);
+      } else {
+        // Paginate: slice the data
+        const start = (pageNum - 1) * ITEMS_PER_PAGE;
+        const end = start + ITEMS_PER_PAGE;
+        const paginatedData = data.slice(start, end);
+        
+        if (append) {
+          setItems(prev => [...prev, ...paginatedData]);
+        } else {
+          setItems(paginatedData);
+        }
+        
+        setAllLoadedItems(data);
+        setHasMore(end < data.length);
+        setPage(pageNum);
+      }
+      
       const syncStatus = await api.getSyncStatus();
       setLastSync(syncStatus.lastSyncMaster);
     } catch (error) {
@@ -40,12 +127,22 @@ export default function MasterBarangScreen({ navigation }: MasterBarangScreenPro
       Alert.alert('Error', 'Gagal memuat data master barang');
     } finally {
       setLoading(false);
+      setLoadingMore(false);
     }
-  }, [searchQuery]);
+  }, [debouncedSearchQuery]);
 
+  // Reset pagination when debounced search changes
   useEffect(() => {
-    loadMasterBarang();
-  }, [loadMasterBarang]);
+    setPage(1);
+    setHasMore(true);
+    loadMasterBarang(1, false);
+  }, [debouncedSearchQuery, loadMasterBarang]);
+
+  const handleLoadMore = useCallback(() => {
+    if (!loadingMore && hasMore && !debouncedSearchQuery) {
+      loadMasterBarang(page + 1, true);
+    }
+  }, [loadingMore, hasMore, debouncedSearchQuery, page, loadMasterBarang]);
 
   const handleSync = async () => {
     setLoading(true);
@@ -53,7 +150,9 @@ export default function MasterBarangScreen({ navigation }: MasterBarangScreenPro
       const result = await api.syncMasterBarang();
       if (result.success) {
         Alert.alert('Sukses', 'Data Master Barang berhasil disinkronisasi');
-        loadMasterBarang();
+        setPage(1);
+        setHasMore(true);
+        loadMasterBarang(1, false);
       } else {
         Alert.alert('Error', result.error || 'Gagal sinkronisasi');
         setLoading(false);
@@ -65,53 +164,20 @@ export default function MasterBarangScreen({ navigation }: MasterBarangScreenPro
     }
   };
 
-  const handleCopySKU = (sku: string) => {
+  const handleCopySKU = useCallback((sku: string) => {
     Clipboard.setString(sku);
     Alert.alert('Sukses', `SKU ${sku} telah disalin ke clipboard`);
-  };
+  }, []);
 
-  const renderItem = ({ item }: { item: MasterBarang }) => {
-    // Helper to safely get string value (handles both object {code, name} and string)
-    const getStringValue = (val: any): string => {
-      if (typeof val === 'string') return val;
-      if (val && typeof val === 'object' && val.name) return val.name;
-      return '-';
-    };
+  // Memoized render item
+  const renderItem = useCallback(({ item }: { item: MasterBarang }) => {
+    return <MasterBarangItem item={item} onCopySKU={handleCopySKU} />;
+  }, [handleCopySKU]);
 
-    return (
-      <View style={styles.itemCard}>
-        <View style={styles.row}>
-          <Text style={styles.label}>No SKU</Text>
-          <View style={styles.valueRow}>
-            <Text style={styles.value}>{item?.sku || '-'}</Text>
-            <TouchableOpacity onPress={() => handleCopySKU(item?.sku || '')} style={styles.copyButton}>
-              <Text style={styles.copyIcon}>📋</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-        <View style={styles.row}>
-          <Text style={styles.label}>Nama</Text>
-          <Text style={styles.value}>{item?.nama || '-'}</Text>
-        </View>
-        <View style={styles.row}>
-          <Text style={styles.label}>Barcode</Text>
-          <Text style={styles.value}>{item?.barcode || '-'}</Text>
-        </View>
-        <View style={styles.row}>
-          <Text style={styles.label}>Kategori</Text>
-          <Text style={styles.valueEmpty}>({getStringValue(item?.category)})</Text>
-        </View>
-        <View style={styles.row}>
-          <Text style={styles.label}>Brand</Text>
-          <Text style={styles.valueEmpty}>({getStringValue(item?.brand)})</Text>
-        </View>
-        <View style={styles.row}>
-          <Text style={styles.label}>Group</Text>
-          <Text style={styles.valueEmpty}>({getStringValue(item?.group)})</Text>
-        </View>
-      </View>
-    );
-  };
+  // Filter items for display (only valid items)
+  const filteredItems = useMemo(() => {
+    return items.filter(item => item && (item.id || item.sku));
+  }, [items]);
 
   return (
     <SafeAreaView style={styles.container}>
@@ -140,17 +206,31 @@ export default function MasterBarangScreen({ navigation }: MasterBarangScreenPro
 
       {/* List */}
       <FlatList
-        data={items.filter(item => item && (item.id || item.sku))}
+        data={filteredItems}
         renderItem={renderItem}
         keyExtractor={(item, index) => item?.id || item?.sku || `item-${index}`}
         contentContainerStyle={styles.listContent}
+        // Performance optimizations
+        windowSize={10} // Render 10 screens worth of items
+        maxToRenderPerBatch={10} // Render 10 items per batch
+        initialNumToRender={10} // Initial render 10 items
+        removeClippedSubviews={true} // Remove off-screen items from memory
+        updateCellsBatchingPeriod={50} // Batch updates every 50ms
+        onEndReached={handleLoadMore}
+        onEndReachedThreshold={0.5}
+        ListFooterComponent={loadingMore ? (
+          <View style={styles.footerLoader}>
+            <ActivityIndicator size="small" color="#1a2744" />
+            <Text style={styles.footerText}>Memuat lebih banyak...</Text>
+          </View>
+        ) : null}
         refreshControl={
-          <RefreshControl refreshing={loading} onRefresh={loadMasterBarang} />
+          <RefreshControl refreshing={loading} onRefresh={() => loadMasterBarang(1, false)} />
         }
         ListEmptyComponent={
           <View style={styles.emptyContainer}>
             <Text style={styles.emptyText}>
-              {loading ? 'Memuat data...' : `Tidak ada data master barang (loaded: ${items.length})`}
+              {loading ? 'Memuat data...' : `Tidak ada data master barang`}
             </Text>
           </View>
         }
@@ -253,6 +333,15 @@ const styles = StyleSheet.create({
   },
   copyIcon: {
     fontSize: 18,
+  },
+  footerLoader: {
+    paddingVertical: 20,
+    alignItems: 'center',
+  },
+  footerText: {
+    marginTop: 8,
+    fontSize: 12,
+    color: '#666',
   },
   emptyContainer: {
     alignItems: 'center',

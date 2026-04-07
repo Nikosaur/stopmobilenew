@@ -415,8 +415,17 @@ class ApiService {
           products = result.data.map(mapProduct).filter(p => p.id && p.sku);
           
           console.log('Mapped products:', products.length);
-          // Cache for offline use (store mapped format)
-          await AsyncStorage.setItem('@master_barang', JSON.stringify(products));
+          // Only cache if data is reasonably sized (max 500 items to prevent memory issues)
+          if (products.length <= 500) {
+            try {
+              await AsyncStorage.setItem('@master_barang', JSON.stringify(products));
+              console.log('Cached master barang:', products.length, 'items');
+            } catch (cacheError) {
+              console.warn('Failed to cache master barang (data too large?):', cacheError);
+            }
+          } else {
+            console.log('Data too large to cache locally:', products.length, 'items');
+          }
         }
       }
 

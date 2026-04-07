@@ -210,6 +210,12 @@ export default function CekStokScreen({ navigation }: CekStokScreenProps) {
         )}
         keyExtractor={(item, index) => item?.id ? `${item.id}-${index}` : `item-${index}`}
         contentContainerStyle={styles.listContent}
+        // Performance optimizations
+        windowSize={10}
+        maxToRenderPerBatch={20}
+        initialNumToRender={20}
+        removeClippedSubviews={true}
+        getItemLayout={(data, index) => ({ length: 44, offset: 44 * index, index })}
         refreshControl={
           <RefreshControl refreshing={loading} onRefresh={loadCekStok} />
         }
