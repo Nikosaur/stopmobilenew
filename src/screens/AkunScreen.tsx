@@ -11,6 +11,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RootStackParamList, User } from '../types';
 import api from '../services/api';
+import sessionManager from '../services/sessionManager';
 import BottomNavigation from '../components/BottomNavigation';
 
 type AkunScreenNavigationProp = NativeStackNavigationProp<RootStackParamList, 'Akun'>;
@@ -42,7 +43,7 @@ export default function AkunScreen({ navigation }: AkunScreenProps) {
           text: 'Keluar',
           style: 'destructive',
           onPress: async () => {
-            await api.logout();
+            await sessionManager.clearSession();
             navigation.replace('Login');
           },
         },

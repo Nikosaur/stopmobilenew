@@ -11,6 +11,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RootStackParamList, SyncStatus, User, Team, StockOpname } from '../types';
 import api from '../services/api';
+import sessionManager from '../services/sessionManager';
 import BottomNavigation from '../components/BottomNavigation';
 
 type HomeScreenNavigationProp = NativeStackNavigationProp<RootStackParamList, 'Home'>;
@@ -118,7 +119,7 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
           text: 'Keluar',
           style: 'destructive',
           onPress: async () => {
-            await api.logout();
+            await sessionManager.clearSession();
             navigation.replace('Login');
           },
         },

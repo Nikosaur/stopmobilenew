@@ -14,6 +14,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../types';
 import apiService from '../services/api';
+import sessionManager from '../services/sessionManager';
 
 type LoginScreenNavigationProp = NativeStackNavigationProp<RootStackParamList, 'Login'>;
 
@@ -36,6 +37,7 @@ export default function LoginScreen({ navigation }: LoginScreenProps) {
     try {
       const result = await apiService.login(username, password);
       if (result.success && result.data) {
+        await sessionManager.startSession();
         navigation.replace('Home');
       } else {
         Alert.alert('Login Failed', result.error || 'Invalid credentials');
