@@ -1,6 +1,38 @@
-This is a new [**React Native**](https://reactnative.dev) project, bootstrapped using [`@react-native-community/cli`](https://github.com/react-native-community/cli).
+# STOP Mobile
 
-# Getting Started
+A React Native mobile application for stock management and inventory tracking with barcode scanning capabilities.
+
+## Screenshots
+
+| Login | Home | Stock Check |
+|-------|------|-------------|
+| ![Login](docs/screenshots/Login.png) | ![Home](docs/screenshots/HomeScreen.png) | ![Stock Check](docs/screenshots/CekStokScreen.png) |
+
+| Barcode Scanner | Input Stock | Edit Stock |
+|-----------------|-------------|------------|
+| ![Scanner](docs/screenshots/Scanner.png) | ![Input](docs/screenshots/InputCekStokScreen.png) | ![Edit](docs/screenshots/EditCekStokScreen.png) |
+
+| Master Barang | Account |
+|---------------|---------|
+| ![Master](docs/screenshots/MasterBarangSreen.png) | ![Account](docs/screenshots/AkunScreen.png) |
+
+## Features
+
+- **Barcode Scanning**: Fast barcode scanning using react-native-camera-kit
+- **Stock Management**: Check and manage inventory stock levels
+- **Location Tracking**: Scan location barcodes for accurate tracking
+- **Offline Support**: Data persistence with AsyncStorage
+- **API Integration**: Real-time sync with backend API
+
+## Tech Stack
+
+- React Native 0.84
+- TypeScript
+- react-native-camera-kit (Barcode scanning)
+- React Navigation
+- AsyncStorage
+
+## Getting Started
 
 > **Note**: Make sure you have completed the [Set Up Your Environment](https://reactnative.dev/docs/set-up-your-environment) guide before proceeding.
 

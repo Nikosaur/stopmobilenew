@@ -95,7 +95,6 @@ export default function LoginScreen({ navigation }: LoginScreenProps) {
       </KeyboardAvoidingView>
 
       <View style={styles.footer}>
-        <Text style={styles.footerText}>Code with ♥ by Darkotech</Text>
         <Text style={styles.footerSubtext}>Staging</Text>
       </View>
     </SafeAreaView>
