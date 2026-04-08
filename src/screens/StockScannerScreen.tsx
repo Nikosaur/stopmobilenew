@@ -35,23 +35,25 @@ export default function StockScannerScreen({ navigation, route }: StockScannerSc
   const scanLinePosition = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
+    let isMounted = true;
     let animationRef: Animated.CompositeAnimation | null = null;
 
     // Start the scanning line animation
     const startAnimation = () => {
+      if (!isMounted) return;
       animationRef = Animated.loop(
         Animated.sequence([
           // Move down
           Animated.timing(scanLinePosition, {
             toValue: 1,
             duration: 2000,
-            useNativeDriver: true,
+            useNativeDriver: false,
           }),
           // Move up
           Animated.timing(scanLinePosition, {
             toValue: 0,
             duration: 2000,
-            useNativeDriver: true,
+            useNativeDriver: false,
           }),
         ])
       );
@@ -61,12 +63,11 @@ export default function StockScannerScreen({ navigation, route }: StockScannerSc
     startAnimation();
 
     return () => {
-      // Properly stop and reset animation
+      isMounted = false;
       if (animationRef) {
         animationRef.stop();
         animationRef = null;
       }
-      scanLinePosition.setValue(0);
     };
   }, []);
 
