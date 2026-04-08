@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
   StyleSheet,
@@ -6,42 +6,134 @@ import {
   TouchableOpacity,
   Alert,
   ActivityIndicator,
+  Animated,
+  Dimensions,
+  Linking,
+  PermissionsAndroid,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Camera, useCameraDevice, useCodeScanner } from 'react-native-vision-camera';
+import { Camera, CameraType, CameraApi } from 'react-native-camera-kit';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../types';
 import apiService from '../services/api';
 
 type StockScannerScreenProps = NativeStackScreenProps<RootStackParamList, 'StockScanner'>;
 
+const { width: SCREEN_WIDTH } = Dimensions.get('window');
+const SCAN_BOX_WIDTH = 250;
+const SCAN_BOX_HEIGHT = 150;
+
 export default function StockScannerScreen({ navigation, route }: StockScannerScreenProps) {
   const { mode, returnTo, returnKey } = route.params || {};
-  const [hasPermission, setHasPermission] = useState(false);
+  const [hasPermission, setHasPermission] = useState<boolean | null>(null);
+  const [permissionDenied, setPermissionDenied] = useState(false);
   const [scanned, setScanned] = useState(false);
   const [loading, setLoading] = useState(false);
-  const device = useCameraDevice('back');
+  const cameraRef = useRef<CameraApi>(null);
 
-  const codeScanner = useCodeScanner({
-    codeTypes: ['ean-13', 'ean-8', 'upc-a', 'upc-e', 'code-128', 'qr'],
-    onCodeScanned: (codes) => {
-      if (!scanned && codes.length > 0) {
-        const value = codes[0].value;
-        if (value) {
-          setScanned(true);
-          handleBarcodeScanned(value);
-        }
+  // Animated scanning line
+  const scanLinePosition = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    let animationRef: Animated.CompositeAnimation | null = null;
+
+    // Start the scanning line animation
+    const startAnimation = () => {
+      animationRef = Animated.loop(
+        Animated.sequence([
+          // Move down
+          Animated.timing(scanLinePosition, {
+            toValue: 1,
+            duration: 2000,
+            useNativeDriver: true,
+          }),
+          // Move up
+          Animated.timing(scanLinePosition, {
+            toValue: 0,
+            duration: 2000,
+            useNativeDriver: true,
+          }),
+        ])
+      );
+      animationRef.start();
+    };
+
+    startAnimation();
+
+    return () => {
+      // Properly stop and reset animation
+      if (animationRef) {
+        animationRef.stop();
+        animationRef = null;
       }
-    },
+      scanLinePosition.setValue(0);
+    };
+  }, []);
+
+  // Interpolate position for the scanning line
+  const scanLineTranslate = scanLinePosition.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0, SCAN_BOX_HEIGHT - 2],
   });
+
+  const handleBarcodeRead = (event: { nativeEvent: { codeStringValue: string } }) => {
+    if (!scanned) {
+      const value = event.nativeEvent.codeStringValue;
+      setScanned(true);
+      handleBarcodeScanned(value);
+    }
+  };
 
   useEffect(() => {
     checkPermission();
   }, []);
 
   const checkPermission = async () => {
-    const status = await Camera.requestCameraPermission();
-    setHasPermission(status === 'granted');
+    try {
+      const granted = await PermissionsAndroid.check(PermissionsAndroid.PERMISSIONS.CAMERA);
+      if (granted) {
+        setHasPermission(true);
+        setPermissionDenied(false);
+      } else {
+        setHasPermission(false);
+      }
+    } catch (err) {
+      console.warn(err);
+      setHasPermission(false);
+    }
+  };
+
+  const requestPermission = async () => {
+    try {
+      const granted = await PermissionsAndroid.request(
+        PermissionsAndroid.PERMISSIONS.CAMERA,
+        {
+          title: 'Camera Permission',
+          message: 'This app needs camera access to scan barcodes',
+          buttonNeutral: 'Ask Me Later',
+          buttonNegative: 'Cancel',
+          buttonPositive: 'OK',
+        }
+      );
+      if (granted === PermissionsAndroid.RESULTS.GRANTED) {
+        setHasPermission(true);
+        setPermissionDenied(false);
+      } else {
+        setHasPermission(false);
+        setPermissionDenied(true);
+      }
+    } catch (err) {
+      console.warn(err);
+      setHasPermission(false);
+    }
+  };
+
+  const openSettings = async () => {
+    try {
+      await Linking.openSettings();
+    } catch (error) {
+      Alert.alert('Error', 'Unable to open settings');
+    }
   };
 
   const handleBarcodeScanned = async (value: string) => {
@@ -93,30 +185,38 @@ export default function StockScannerScreen({ navigation, route }: StockScannerSc
     navigation.navigate('StockCheck', {});
   };
 
-  if (!hasPermission) {
+  if (hasPermission === null) {
+    // Still checking permission
     return (
       <SafeAreaView style={styles.container}>
         <View style={styles.permissionContainer}>
-          <Text style={styles.bigEmoji}>📷</Text>
-          <Text style={styles.permissionText}>Camera permission required</Text>
-          <TouchableOpacity style={styles.button} onPress={checkPermission}>
-            <Text style={styles.buttonText}>Grant Permission</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.manualButton} onPress={handleManualEntry}>
-            <Text style={styles.manualButtonText}>Manual Entry Instead</Text>
-          </TouchableOpacity>
+          <ActivityIndicator size="large" color="#f90" />
+          <Text style={styles.permissionText}>Checking camera access...</Text>
         </View>
       </SafeAreaView>
     );
   }
 
-  if (device == null) {
+  if (!hasPermission) {
     return (
       <SafeAreaView style={styles.container}>
         <View style={styles.permissionContainer}>
-          <Text style={styles.permissionText}>No camera device found</Text>
+          <Text style={styles.bigEmoji}>📷</Text>
+          <Text style={styles.permissionText}>
+            {permissionDenied
+              ? 'Camera access denied. Please enable it in settings.'
+              : 'Camera permission required to scan barcodes'}
+          </Text>
+          <TouchableOpacity
+            style={styles.button}
+            onPress={permissionDenied ? openSettings : requestPermission}
+          >
+            <Text style={styles.buttonText}>
+              {permissionDenied ? 'Open Settings' : 'Grant Permission'}
+            </Text>
+          </TouchableOpacity>
           <TouchableOpacity style={styles.manualButton} onPress={handleManualEntry}>
-            <Text style={styles.manualButtonText}>Manual Entry</Text>
+            <Text style={styles.manualButtonText}>Manual Entry Instead</Text>
           </TouchableOpacity>
         </View>
       </SafeAreaView>
@@ -140,18 +240,64 @@ export default function StockScannerScreen({ navigation, route }: StockScannerSc
 
       <View style={styles.cameraContainer}>
         <Camera
+          ref={cameraRef}
           style={styles.camera}
-          device={device}
-          isActive={!scanned}
-          codeScanner={codeScanner}
+          cameraType={CameraType.Back}
+          scanBarcode={true}
+          showFrame={false}
+          laserColor="#f90"
+          frameColor="#f90"
+          onReadCode={handleBarcodeRead}
+          focusMode="on"
+          zoomMode="off"
         />
+        
+        {/* Scanner Overlay - just the scan box with animated line */}
         <View style={styles.overlay}>
-          <View style={styles.scanArea} />
+          {/* Scan Box with corners and animated line */}
+          <View style={styles.scanBox}>
+            {/* Corner markers */}
+            <View style={[styles.corner, styles.cornerTopLeft]} />
+            <View style={[styles.corner, styles.cornerTopRight]} />
+            <View style={[styles.corner, styles.cornerBottomLeft]} />
+            <View style={[styles.corner, styles.cornerBottomRight]} />
+            
+            {/* Animated scanning line */}
+            <Animated.View
+              style={[
+                styles.scanLine,
+                { transform: [{ translateY: scanLineTranslate }] },
+              ]}
+            />
+            
+            {/* Laser effect on the line */}
+            <Animated.View
+              style={[
+                { transform: [{ translateY: scanLineTranslate }] },
+              ]}
+            />
+          </View>
+          
+          {/* Scan instructions */}
+          <View style={styles.instructions}>
+            <Text style={styles.instructionText}>
+              {mode === 'lokasi' ? 'Scan barcode lokasi' : 'Arahkan barcode ke dalam kotak'}
+            </Text>
+          </View>
         </View>
+        
+        {/* Scanning overlay */}
+        {scanned && !loading && (
+          <View style={styles.loadingOverlay}>
+            <ActivityIndicator size="large" color="#f90" />
+            <Text style={styles.loadingText}>Processing...</Text>
+          </View>
+        )}
+        
         {loading && (
           <View style={styles.loadingOverlay}>
             <ActivityIndicator size="large" color="#007AFF" />
-            <Text style={styles.loadingText}>Checking stock...</Text>
+            <Text style={styles.loadingText}>Mencari data...</Text>
           </View>
         )}
       </View>
@@ -210,14 +356,68 @@ const styles = StyleSheet.create({
     ...StyleSheet.absoluteFillObject,
     justifyContent: 'center',
     alignItems: 'center',
-  },
-  scanArea: {
-    width: 250,
-    height: 150,
-    borderWidth: 2,
-    borderColor: '#007AFF',
-    borderRadius: 12,
     backgroundColor: 'transparent',
+  },
+  scanBox: {
+    width: SCAN_BOX_WIDTH,
+    height: SCAN_BOX_HEIGHT,
+    backgroundColor: 'transparent',
+    position: 'relative',
+    overflow: 'hidden',
+  },
+  corner: {
+    position: 'absolute',
+    width: 20,
+    height: 20,
+    borderColor: 'rgb(255, 255, 255)',
+    borderWidth: 3,
+  },
+  cornerTopLeft: {
+    top: 0,
+    left: 0,
+    borderRightWidth: 0,
+    borderBottomWidth: 0,
+    borderTopLeftRadius: 0,
+  },
+  cornerTopRight: {
+    top: 0,
+    right: 0,
+    borderLeftWidth: 0,
+    borderBottomWidth: 0,
+    borderTopRightRadius: 0,
+  },
+  cornerBottomLeft: {
+    bottom: 0,
+    left: 0,
+    borderRightWidth: 0,
+    borderTopWidth: 0,
+    borderBottomLeftRadius: 0,
+  },
+  cornerBottomRight: {
+    bottom: 0,
+    right: 0,
+    borderLeftWidth: 0,
+    borderTopWidth: 0,
+    borderBottomRightRadius: 0,
+  },
+  scanLine: {
+    position: 'absolute',
+    left: 20,
+    right: 20,
+    height: 2,
+    backgroundColor: 'rgb(255, 255, 255)',
+    elevation: 4,
+  },
+  instructions: {
+    position: 'absolute',
+    top: '65%',
+    alignItems: 'center',
+  },
+  instructionText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '500',
+    textAlign: 'center',
   },
   loadingOverlay: {
     ...StyleSheet.absoluteFillObject,
