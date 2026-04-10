@@ -20,10 +20,9 @@ import BottomNavigation from '../components/BottomNavigation';
 type InputCekStokScreenProps = NativeStackScreenProps<RootStackParamList, 'InputCekStok'>;
 
 export default function InputCekStokScreen({ navigation, route }: InputCekStokScreenProps) {
-  const { barcode: initialBarcode, lokasi: scannedLokasi } = route.params || {};
-
+  // State - start empty, will be filled from params on first mount
   const [lokasi, setLokasi] = useState('');
-  const [barcode, setBarcode] = useState(initialBarcode || '');
+  const [barcode, setBarcode] = useState('');
   const [masterBarang, setMasterBarang] = useState<MasterBarang | null>(null);
   const [qtyBaik, setQtyBaik] = useState('0');
   const [qtyRusak, setQtyRusak] = useState('0');
@@ -32,22 +31,13 @@ export default function InputCekStokScreen({ navigation, route }: InputCekStokSc
   const [showDropdown, setShowDropdown] = useState(false);
   const [masterBarangList, setMasterBarangList] = useState<MasterBarang[]>([]);
 
+  // Track last applied values
+  const appliedBarcode = React.useRef<string | undefined>(undefined);
+  const appliedLokasi = React.useRef<string | undefined>(undefined);
+
   useEffect(() => {
     loadMasterBarangList();
   }, []);
-
-  useEffect(() => {
-    if (initialBarcode) {
-      setBarcode(initialBarcode);
-      searchByBarcode(initialBarcode);
-    }
-  }, [initialBarcode]);
-
-  useEffect(() => {
-    if (scannedLokasi) {
-      setLokasi(scannedLokasi);
-    }
-  }, [scannedLokasi]);
 
   const loadMasterBarangList = async () => {
     const data = await api.getMasterBarang();
@@ -71,18 +61,23 @@ export default function InputCekStokScreen({ navigation, route }: InputCekStokSc
   const handleScanLokasi = () => {
     navigation.navigate('StockScanner', {
       mode: 'lokasi',
-      returnTo: 'InputCekStok',
-      returnKey: 'lokasi',
+      onScanSuccess: (value: string) => {
+        setLokasi(value);
+        appliedLokasi.current = value;
+      },
     });
   };
 
   const handleScanBarcode = () => {
     navigation.navigate('StockScanner', {
       mode: 'barcode',
-      returnTo: 'InputCekStok',
-      returnKey: 'barcode',
+      onScanSuccess: (value: string) => {
+        setBarcode(value);
+        appliedBarcode.current = value;
+        searchByBarcode(value);
+      },
     });
-  };
+  }
 
   const handleCopyBarcode = () => {
     if (!barcode.trim()) {

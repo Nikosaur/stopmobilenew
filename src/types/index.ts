@@ -15,6 +15,7 @@ export type RootStackParamList = {
     mode?: 'barcode' | 'lokasi';
     returnTo?: keyof RootStackParamList;
     returnKey?: 'barcode' | 'lokasi';
+    onScanSuccess?: (value: string) => void;
   };
   Akun: undefined;
   StockCheck: { barcode?: string };
